@@ -3,7 +3,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
-
+const passport = require("passport");
 const User = require("../models/User");
 const transporter = require("../config/nodemailer");
 
@@ -673,6 +673,74 @@ router.delete(
                 message: "Something went wrong",
             });
         }
+    }
+);
+
+// ===============================
+// LOGOUT
+// ===============================
+router.post("/logout", protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+
+        if (user) {
+            user.refreshToken = null;
+            await user.save();
+        }
+
+        res.status(200).json({
+            message: "Logout successful",
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            message: "Something went wrong",
+        });
+    }
+});
+// ===============================
+// GOOGLE LOGIN
+// ===============================
+router.get(
+    "/google",
+    passport.authenticate("google", {
+        scope: ["profile", "email"],
+    })
+);
+// ===============================
+// GOOGLE CALLBACK
+// ===============================
+router.get(
+    "/google/callback",
+    passport.authenticate("google", {
+        session: false,
+        failureRedirect: "/login",
+    }),
+    async (req, res) => {
+        const accessToken = jwt.sign(
+            {
+                id: req.user._id,
+                role: req.user.role,
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "15m" }
+        );
+
+        const refreshToken = jwt.sign(
+            {
+                id: req.user._id,
+            },
+            process.env.JWT_REFRESH_SECRET,
+            { expiresIn: "7d" }
+        );
+
+        req.user.refreshToken = refreshToken;
+        await req.user.save();
+
+        res.redirect(
+            `http://localhost:5173/login-success?token=${accessToken}`
+        );
     }
 );
 

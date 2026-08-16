@@ -101,6 +101,15 @@ function Login() {
                 Don't have an account?{" "}
                 <Link to="/register">Register</Link>
             </p>
+            <button
+                type="button"
+                onClick={() => {
+                    window.location.href =
+                        "http://localhost:5000/api/auth/google";
+                }}
+            >
+                Continue with Google
+            </button>
         </div>
     );
 }

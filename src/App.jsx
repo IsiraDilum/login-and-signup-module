@@ -10,42 +10,46 @@ import ForgotPassword from "./components/ForgotPassword";
 import VerifyOtp from "./components/VerifyOtp";
 import ResetPassword from "./components/ResetPassword";
 
+import LoginSuccess from "./components/LoginSuccess";
+
 function App() {
-    return (
-        <Routes>
-            <Route path="/" element={<Login />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+        return (
+            <Routes>
+                    <Route path="/" element={<Login />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/register" element={<Register />} />
 
-            {/* Forgot Password Flow */}
-            <Route
-                path="/forgot-password"
-                element={<ForgotPassword />}
-            />
+                    <Route
+                        path="/login-success"
+                        element={<LoginSuccess />}
+                    />
 
-            <Route
-                path="/verify-otp"
-                element={<VerifyOtp />}
-            />
+                    <Route
+                        path="/forgot-password"
+                        element={<ForgotPassword />}
+                    />
 
-            <Route
-                path="/reset-password"
-                element={<ResetPassword />}
-            />
+                    <Route
+                        path="/verify-otp"
+                        element={<VerifyOtp />}
+                    />
 
-            {/* User Dashboard */}
-            <Route
-                path="/dashboard"
-                element={<Dashboard />}
-            />
+                    <Route
+                        path="/reset-password"
+                        element={<ResetPassword />}
+                    />
 
-            {/* Admin Panel */}
-            <Route
-                path="/admin"
-                element={<AdminPanel />}
-            />
-        </Routes>
-    );
+                    <Route
+                        path="/dashboard"
+                        element={<Dashboard />}
+                    />
+
+                    <Route
+                        path="/admin"
+                        element={<AdminPanel />}
+                    />
+            </Routes>
+        );
 }
 
 export default App;

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function AdminPanel() {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    const navigate = useNavigate();
 
     useEffect(() => {
         fetchUsers();
@@ -10,8 +13,7 @@ function AdminPanel() {
 
     const fetchUsers = async () => {
         try {
-            const token =
-                localStorage.getItem("token");
+            const token = localStorage.getItem("token");
 
             const response = await fetch(
                 "http://localhost:5000/api/auth/admin/users",
@@ -29,13 +31,36 @@ function AdminPanel() {
             } else {
                 alert(data.message);
             }
-
         } catch (error) {
             console.error(error);
             alert("Failed to load users");
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleLogout = async () => {
+        const token = localStorage.getItem("token");
+
+        try {
+            await fetch(
+                "http://localhost:5000/api/auth/logout",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+        } catch (error) {
+            console.error(error);
+        }
+
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+
+        navigate("/login");
     };
 
     if (loading) {
@@ -65,6 +90,12 @@ function AdminPanel() {
                 ))}
                 </tbody>
             </table>
+
+            <br />
+
+            <button onClick={handleLogout}>
+                Logout
+            </button>
         </div>
     );
 }
