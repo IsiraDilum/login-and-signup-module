@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+
+    const navigate = useNavigate();
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -25,6 +28,7 @@ function Login() {
             const data = await response.json();
 
             if (response.ok) {
+
                 localStorage.setItem(
                     "token",
                     data.accessToken
@@ -40,13 +44,13 @@ function Login() {
                     JSON.stringify(data.user)
                 );
 
-                alert("Login Successful");
-
-                console.log("Access Token:", data.accessToken);
-                console.log("User:", data.user);
-
-            } else {
-                alert(data.message);
+                if (data.user.role === "admin") {
+                    alert("Login as Admin");
+                    navigate("/admin");
+                } else {
+                    alert("Login as User");
+                    navigate("/dashboard");
+                }
             }
 
         } catch (error) {
@@ -88,6 +92,15 @@ function Login() {
                     Login
                 </button>
             </form>
+            <p>
+                <Link to="/forgot-password">
+                    Forgot Password?
+                </Link>
+            </p>
+            <p>
+                Don't have an account?{" "}
+                <Link to="/register">Register</Link>
+            </p>
         </div>
     );
 }

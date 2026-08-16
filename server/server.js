@@ -1,3 +1,4 @@
+//server/server.js
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -11,8 +12,8 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 
-console.log("EMAIL_USER =", process.env.EMAIL_USER);
-console.log("EMAIL_PASS =", process.env.EMAIL_PASS);
+//console.log("EMAIL_USER =", process.env.EMAIL_USER);
+//console.log("EMAIL_PASS =", process.env.EMAIL_PASS);
 
 
 mongoose.connect(process.env.MONGO_URI)

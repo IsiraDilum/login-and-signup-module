@@ -1,6 +1,8 @@
+//server/routes/authRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 
 const User = require("../models/User");
 const transporter = require("../config/nodemailer");
@@ -12,6 +14,20 @@ const {
 
 const router = express.Router();
 
+// ===============================
+// RATE LIMITERS
+// ===============================
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10,
+    message: { message: "Too many attempts, please try again later" },
+});
+
+const otpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: { message: "Too many OTP attempts, please try again later" },
+});
 
 router.get("/profile", protect, async (req, res) => {
     res.json({
@@ -23,6 +39,12 @@ router.get("/profile", protect, async (req, res) => {
 router.post("/register", async (req, res) => {
     try {
         const { username, email, password } = req.body;
+
+        if (!username || !email || !password) {
+            return res.status(400).json({
+                message: "Username, email and password are required",
+            });
+        }
 
         const userExists = await User.findOne({ email });
 
@@ -50,13 +72,14 @@ router.post("/register", async (req, res) => {
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message,
+            message: "Something went wrong",
         });
     }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", authLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -97,8 +120,6 @@ router.post("/login", async (req, res) => {
         user.refreshToken = refreshToken;
         await user.save();
 
-
-
         res.status(200).json({
             message: "Login successful",
             accessToken,
@@ -112,11 +133,13 @@ router.post("/login", async (req, res) => {
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message,
+            message: "Something went wrong",
         });
     }
 });
+
 router.get("/me", protect, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select("-password");
@@ -130,8 +153,9 @@ router.get("/me", protect, async (req, res) => {
         res.status(200).json(user);
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message,
+            message: "Something went wrong",
         });
     }
 });
@@ -162,8 +186,9 @@ router.put("/profile", protect, async (req, res) => {
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message,
+            message: "Something went wrong",
         });
     }
 });
@@ -172,7 +197,19 @@ router.put("/change-password", protect, async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                message: "Current and new password are required",
+            });
+        }
+
         const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found",
+            });
+        }
 
         const isMatch = await bcrypt.compare(
             currentPassword,
@@ -187,6 +224,10 @@ router.put("/change-password", protect, async (req, res) => {
 
         user.password = await bcrypt.hash(newPassword, 10);
 
+        // Invalidate existing sessions so old refresh tokens can't
+        // keep minting new access tokens after a password change
+        user.refreshToken = null;
+
         await user.save();
 
         res.status(200).json({
@@ -194,19 +235,39 @@ router.put("/change-password", protect, async (req, res) => {
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message,
+            message: "Something went wrong",
         });
     }
 });
 
 router.delete("/delete-account", protect, async (req, res) => {
     try {
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({
+                message: "Password is required to delete account",
+            });
+        }
+
         const user = await User.findById(req.user.id);
 
         if (!user) {
             return res.status(404).json({
                 message: "User not found",
+            });
+        }
+
+        const isMatch = await bcrypt.compare(
+            password,
+            user.password
+        );
+
+        if (!isMatch) {
+            return res.status(400).json({
+                message: "Incorrect password",
             });
         }
 
@@ -217,21 +278,48 @@ router.delete("/delete-account", protect, async (req, res) => {
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message,
+            message: "Something went wrong",
         });
     }
 });
 
-router.post("/forgot-password", async (req, res) => {
+router.post("/logout", protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found",
+            });
+        }
+
+        user.refreshToken = null;
+        await user.save();
+
+        res.status(200).json({
+            message: "Logged out successfully",
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            message: "Something went wrong",
+        });
+    }
+});
+
+router.post("/forgot-password", authLimiter, async (req, res) => {
     try {
         const { email } = req.body;
 
         const user = await User.findOne({ email });
 
         if (!user) {
-            return res.status(404).json({
-                message: "User not found"
+            // Don't reveal whether the email exists in the system
+            return res.status(200).json({
+                message: "If that email is registered, an OTP has been sent",
             });
         }
 
@@ -244,10 +332,7 @@ router.post("/forgot-password", async (req, res) => {
 
         await user.save();
 
-        console.log("Sending email to:", email);
-        console.log("Using Gmail:", process.env.EMAIL_USER);
-
-        const info = await transporter.sendMail({
+        await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: email,
             subject: "Password Reset OTP",
@@ -259,26 +344,19 @@ router.post("/forgot-password", async (req, res) => {
             `
         });
 
-        console.log("EMAIL SENT:", info.response);
-
         res.status(200).json({
-            message: "OTP sent to email"
+            message: "If that email is registered, an OTP has been sent",
         });
 
     } catch (error) {
-
-        console.log("=================================");
-        console.log("EMAIL ERROR:");
-        console.log(error);
-        console.log("=================================");
-
+        console.error("EMAIL ERROR:", error);
         res.status(500).json({
-            message: error.message
+            message: "Something went wrong",
         });
     }
 });
 
-router.post("/verify-otp", async (req, res) => {
+router.post("/verify-otp", otpLimiter, async (req, res) => {
     try {
         const { email, otp } = req.body;
 
@@ -286,34 +364,35 @@ router.post("/verify-otp", async (req, res) => {
 
         if (!user) {
             return res.status(404).json({
-                message: "User not found"
+                message: "User not found",
             });
         }
 
-        if (user.otp !== otp) {
+        if (!user.otp || user.otp !== otp) {
             return res.status(400).json({
-                message: "Invalid OTP"
+                message: "Invalid OTP",
             });
         }
 
         if (user.otpExpire < Date.now()) {
             return res.status(400).json({
-                message: "OTP expired"
+                message: "OTP expired",
             });
         }
 
         res.status(200).json({
-            message: "OTP verified successfully"
+            message: "OTP verified successfully",
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message
+            message: "Something went wrong",
         });
     }
 });
 
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", otpLimiter, async (req, res) => {
     try {
         const { email, otp, newPassword } = req.body;
 
@@ -321,19 +400,19 @@ router.post("/reset-password", async (req, res) => {
 
         if (!user) {
             return res.status(404).json({
-                message: "User not found"
+                message: "User not found",
             });
         }
 
-        if (user.otp !== otp) {
+        if (!user.otp || user.otp !== otp) {
             return res.status(400).json({
-                message: "Invalid OTP"
+                message: "Invalid OTP",
             });
         }
 
         if (user.otpExpire < Date.now()) {
             return res.status(400).json({
-                message: "OTP expired"
+                message: "OTP expired",
             });
         }
 
@@ -348,19 +427,65 @@ router.post("/reset-password", async (req, res) => {
         user.otp = null;
         user.otpExpire = null;
 
+        // Invalidate existing sessions
+        user.refreshToken = null;
+
         await user.save();
 
         res.status(200).json({
-            message: "Password reset successful"
+            message: "Password reset successful",
         });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
-            message: error.message
+            message: "Something went wrong",
         });
     }
 });
 
+router.post("/refresh", async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+
+        if (!refreshToken) {
+            return res.status(401).json({
+                message: "No refresh token",
+            });
+        }
+
+        const decoded = jwt.verify(
+            refreshToken,
+            process.env.JWT_REFRESH_SECRET
+        );
+
+        const user = await User.findById(decoded.id);
+
+        if (!user || user.refreshToken !== refreshToken) {
+            return res.status(403).json({
+                message: "Invalid refresh token",
+            });
+        }
+
+        const accessToken = jwt.sign(
+            {
+                id: user._id,
+                role: user.role
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "15m" }
+        );
+
+        res.json({
+            accessToken,
+        });
+
+    } catch (error) {
+        res.status(403).json({
+            message: "Invalid or expired refresh token",
+        });
+    }
+});
 
 // ===============================
 // ADMIN - GET ALL USERS
@@ -371,12 +496,13 @@ router.get(
     adminOnly,
     async (req, res) => {
         try {
-            const users = await User.find().select("-password");
+            const users = await User.find().select("-password").lean();
 
             res.status(200).json(users);
         } catch (error) {
+            console.error(error);
             res.status(500).json({
-                message: error.message,
+                message: "Something went wrong",
             });
         }
     }
@@ -403,8 +529,9 @@ router.get(
             res.status(200).json(user);
 
         } catch (error) {
+            console.error(error);
             res.status(500).json({
-                message: error.message,
+                message: "Something went wrong",
             });
         }
     }
@@ -426,6 +553,12 @@ router.post(
                 role
             } = req.body;
 
+            if (!username || !email || !password) {
+                return res.status(400).json({
+                    message: "Username, email and password are required",
+                });
+            }
+
             const userExists =
                 await User.findOne({ email });
 
@@ -445,11 +578,17 @@ router.post(
                 role: role || "user",
             });
 
-            res.status(201).json(user);
+            res.status(201).json({
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+            });
 
         } catch (error) {
+            console.error(error);
             res.status(500).json({
-                message: error.message,
+                message: "Something went wrong",
             });
         }
     }
@@ -485,12 +624,18 @@ router.put(
 
             res.json({
                 message: "User updated successfully",
-                user,
+                user: {
+                    id: user._id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role,
+                },
             });
 
         } catch (error) {
+            console.error(error);
             res.status(500).json({
-                message: error.message,
+                message: "Something went wrong",
             });
         }
     }
@@ -523,8 +668,9 @@ router.delete(
             });
 
         } catch (error) {
+            console.error(error);
             res.status(500).json({
-                message: error.message,
+                message: "Something went wrong",
             });
         }
     }
